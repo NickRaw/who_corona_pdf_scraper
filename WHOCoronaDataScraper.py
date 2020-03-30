@@ -2,13 +2,28 @@ import PyPDF2
 import PDFDownloader
 from datetime import date, datetime, timedelta
 import pycountry
+import requests
+from pathlib import Path
+from io import BytesIO
 
 link = 'https://www.who.int/docs/default-source/coronaviruse/situation-reports/{}-sitrep-{}-covid-19.pdf' # Link to the pdf
 
 firstDate = datetime.strptime("21-1-2020", "%d-%m-%Y").date() # Date of first publication
 
 countries=[f.name for f in pycountry.countries] # List of all countries in pycountry
+# TODO: Figure out how to read every country. NLTK.Word_tokenizer?
 
+def pdf_exists(link):
+    response = requests.get(link, stream = True)
+    if response.status_code == 404:
+        return False
+    else:
+        return True
+
+def get_pdf_stream(link):
+    response = requests.get(link)
+    pdf_file = BytesIO(response.content)
+    return pdf_file
 
 def prepare_WHO_grabberdata(date): # Takes a date and gives a formatted date en number back to use in the link
     issuenumber = (date-firstDate).days + 1
@@ -32,24 +47,14 @@ def get_latest_WHO_Data():
     data = [] # Empty list of data
     headers = ['country','total confirmed cases','total deaths','total new deaths'] # List of headers
 
-    try: # Looking if there is a PDF file of the issue of today in the folder
-        pdfFileObj = open("rawPDFdata/file-{}.pdf".format(issuenumber_today), 'rb')
-
-    except IOError as e: # Issue of today is not in folder doesn't exist in folder so it has to be grabbed from WHO
-        print(e)
-        searchlink = link.format(strToday,str(issuenumber_today)) # Creating the link and calling the PDFDownloader to grab the issue of today
-
-        if PDFDownloader.download_PDF(searchlink,"rawPDFdata", "file-{}".format(str(issuenumber_today))):
-            pdfFileObj = open("rawPDFdata/file-{}.pdf".format(str(issuenumber_today)), 'rb')
-
-        else: # Issue of today doesn't exist so yesterday has to be grabbed
-            try:
-                pdfFileObj = open("rawPDFdata/file-{}.pdf".format(issuenumber_yesterday), 'rb')
-            except IOError as f:
-                print(f)
-                searchlink = link.format(strToday, issuenumber_yesterday)
-                PDFDownloader.download_PDF(searchlink,"rawPDFdata", "file-{}".format(str(issuenumber_yesterday)))
-                pdfFileObj = open("rawPDFdata/file-{}.pdf".format(str(issuenumber_yesterday)), 'rb')
+    searchlink = link.format(strToday, str(issuenumber_today)) # Creating the link and checking if issue of today exists
+    if pdf_exists(searchlink):
+        # get filestream
+        pdfFileObj = get_pdf_stream(searchlink)
+    else:
+        searchlink = link.format(strYesterday, str(issuenumber_yesterday))
+        # get filestream
+        pdfFileObj = get_pdf_stream(searchlink)
 
     pdfReader = PyPDF2.PdfFileReader(pdfFileObj)
 
@@ -58,31 +63,25 @@ def get_latest_WHO_Data():
         page = pdfReader.getPage(pageNum)
         splitpage = page.extractText().split("\n")
 
-        # print('Length: ', len(splitpage))
+        header_place = 0
+        datarow = {}
         for x in range(0, len(splitpage)):
             if splitpage[x] in countries:
-                datarow = {}
-                datarow['country'] = splitpage[x]
-                if splitpage[x+2] != ' ':
-                    datarow['total confirmed cases'] = int(splitpage[x+2])
-                else:
-                    datarow['total confirmed cases'] = int(splitpage[x+3])
+                datarow[headers[header_place]] = splitpage[x]
+                header_place += 1
+            try:
+                if header_place > 0:
+                    number = int(splitpage[x])
+                    datarow[headers[header_place]] = number
+                    if header_place == len(headers)-1:
+                        data.append(datarow)
+                        header_place = 0
+                        datarow = {}
+                    else:
+                        header_place += 1
+            except ValueError as e:
+                e = e
 
-                if splitpage[x+4] != ' ':
-                    datarow['total confirmed new cases'] = int(splitpage[x+4])
-                else:
-                    datarow['total confirmed new cases'] = int(splitpage[x+5])
-
-                if splitpage[x+6] != ' ':
-                    datarow['total deaths'] = int(splitpage[x+6])
-                else:
-                    datarow['total deaths'] = int(splitpage[x+7])
-
-                if splitpage[x+8] != ' ':
-                    datarow['total new deaths'] = int(splitpage[x+8])
-                else:
-                    datarow['total new deaths'] = int(splitpage[x+9])
-                data.append(datarow)
     pdfFileObj.close()
     print('Done')
     return data, headers
