@@ -97,3 +97,9 @@ def sort_WHO_data_low_to_high(data):
     for x in range(1, len(sorted_data)+1):
         sorted_data[x]['index'] = x
     return sorted_data
+
+
+data, headers = get_latest_WHO_Data()
+
+for country in data:
+    print(country)
