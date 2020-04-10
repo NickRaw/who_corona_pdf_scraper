@@ -1,9 +1,7 @@
 import PyPDF2
-import PDFDownloader
 from datetime import date, datetime, timedelta
 import pycountry
 import requests
-from pathlib import Path
 from io import BytesIO
 
 link = 'https://www.who.int/docs/default-source/coronaviruse/situation-reports/{}-sitrep-{}-covid-19.pdf' # Link to the pdf
